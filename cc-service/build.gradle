@@ -1,0 +1,145 @@
+
+
+apply plugin: 'distribution'
+apply plugin: 'java-library-distribution'
+
+apply plugin: 'os-package'
+
+apply plugin: 'net.researchgate.release'
+apply plugin: 'docker'
+
+apply plugin: 'spring-boot'
+apply plugin: "nebula.ospackage"
+
+sourceCompatibility = 1.8
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '2.2'
+}
+
+def permanentPackageName = project.name
+def group = 'thomsonreuters-1p'
+def rpmRelease = 1
+def snapshot = true
+if (snapshot) { rpmRelease = 'SNAPSHOT' }
+
+configurations.all {
+    resolutionStrategy.cacheDynamicVersionsFor 1, 'hours'
+    resolutionStrategy.cacheChangingModulesFor 1, 'hours'
+}
+
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath("io.spring.gradle:dependency-management-plugin:0.6.1.RELEASE")
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:1.5.2.RELEASE")
+        classpath("com.netflix.nebula:gradle-ospackage-plugin:4.3.0")
+    }
+}
+
+
+
+bootRepackage {
+    mainClass = 'com.clarivate.spring.cc.seed.Application'
+}
+
+jar {
+    baseName = 'spring-cc-foundation'
+    version =  '1.0'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+        }
+        resources {
+            srcDir 'src/main/resources'
+        }
+    }
+    test {
+        java {
+            srcDir 'src/test/java'
+        }
+        resources {
+            srcDir 'src/test/resources'
+        }
+    }
+}
+
+ospackage {
+    packageName = permanentPackageName
+    release = rpmRelease
+    arch = NOARCH
+    os = LINUX
+    from(file('root/etc/reuters/springboot')) {
+        into('/etc/reuters')
+        user 'root'
+        permissionGroup 'root'
+    }
+
+
+    from("build/install/"+ name) {
+        into('/opt/reuters/apps/springboot')
+        user 'springboot'
+        permissionGroup 'springboot'
+
+    }
+}
+
+buildRpm.dependsOn installDist
+
+dependencyManagement {
+    imports {
+        mavenBom 'org.springframework.cloud:spring-cloud-dependencies:Camden.SR7'
+    }
+}
+
+
+dependencies {
+    compile("org.springframework.cloud:spring-cloud-starter-eureka")
+    compile("org.springframework.boot:spring-boot-starter-actuator:1.5.2.RELEASE")
+    compile("org.springframework.boot:spring-boot-starter-web:1.5.2.RELEASE") {
+        exclude module: "spring-boot-starter-tomcat"
+    }
+    testCompile("org.springframework.boot:spring-boot-starter-test")
+    testCompile("org.mockito:mockito-all:1.10.19")
+    
+    compile("io.springfox:springfox-swagger-ui:2.2.2")
+    compile("io.springfox:springfox-swagger2:2.2.2")
+    compile("junit:junit")
+    compile("org.apache.commons:commons-io:1.3.2")
+    compile("org.javatuples:javatuples:1.2")
+    compile("com.google.guava:guava:18.0")
+    compile("com.clarivate:ngs-kpa-commons:0.0.1")
+    compile("com.clarivate:sb-contracts:0.0.1")
+    compile("com.clarivate:lsp-parser-core:0.0.5")
+    compile("com.clarivate:spring-beacon:2.0.5")
+    compile("com.clarivate:spring-eiddo-client:2.0.5")
+    compile("com.clarivate:spring-eureka-client:2.0.5")
+    compile("com.clarivate:spring-ribbon:2.0.5")
+
+}
+
+
+tasks.withType(org.springframework.boot.gradle.run.BootRunTask) {
+    systemProperty('archaius.deployment.environment', 'dev')
+    systemProperty('archaius.deployment.stack', '1p')
+    systemProperty('archaius.deployment.subenvironment', 'snapshot')
+    systemProperty('eiddo.client.repoChain', 'kpahub')
+    systemProperty('archaius.deployment.domainName', 'dev.oneplatform.build')
+    systemProperty('archaius.deployment.region', 'us-west-2')
+    systemProperty('archaius.deployment.applicationId', 'spring-cc-foundation')
+}
+
+task svcVersion() << {
+    def file = new File("$projectDir/build/svcVersion.txt")
+    file.createNewFile()
+    file.text = """version=$version
+applicationName=.name
+"""
+}
